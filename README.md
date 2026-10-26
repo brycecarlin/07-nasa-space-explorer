@@ -9,3 +9,7 @@ You'll get to use your skills to build something that's actually connected to re
 - The provided files include a NASA logo, date inputs, a button, a placeholder for your gallery, and basic layout and styling to help you get started.
 - It also includes built-in logic (in `dateRange.js`) to handle the valid APOD date range—from June 16, 1995 to today. No need to modify it.
 - All your custom JavaScript should go in `script.js`. That's where you'll write the code that fetches data and displays your gallery.
+
+## API Migration — October 26, 2026
+
+I had to migrate this application to NASA's new APOD WordPress API after NASA updated its service. The app now uses the new endpoint, its date-filter format, and the `hdurl` field to display images.

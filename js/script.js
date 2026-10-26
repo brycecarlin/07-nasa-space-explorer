@@ -10,8 +10,8 @@ const modalTitle = document.getElementById("modalTitle");
 const modalDate = document.getElementById("modalDate");
 const modalExplanation = document.getElementById("modalExplanation");
 
-// NASA API key
-const apiKey = "xXBDbTgoOFhhPjFde6UTEEi2rxSegqXEUkwICvqh";
+// EDITED: Use NASA's new WordPress endpoint, which accepts requests without an API key.
+const apiEndpoint = "https://science.nasa.gov/wp-json/wp/v2/apod-basic";
 
 const spaceFact = document.getElementById("spaceFact");
 
@@ -38,10 +38,25 @@ getImagesBtn.addEventListener("click", async function () {
   const startDate = startInput.value;
   const endDate = endInput.value;
 
-  const apiUrl =
-    `https://api.nasa.gov/planetary/apod?api_key=${apiKey}&start_date=${startDate}&end_date=${endDate}`;
-
   const gallery = document.getElementById("gallery");
+
+  // EDITED: Validate both dates before sending a request to NASA.
+  if (!startDate || !endDate || !startInput.reportValidity() || !endInput.reportValidity()) {
+    gallery.textContent = "Please select valid start and end dates.";
+    return;
+  }
+  if (startDate > endDate) {
+    gallery.textContent = "The start date must be on or before the end date.";
+    return;
+  }
+
+  // EDITED: The live API uses date_from/date_to in YYMMDD format, not start_date/end_date.
+  const dateFrom = startDate.replaceAll("-", "").slice(2);
+  const dateTo = endDate.replaceAll("-", "").slice(2);
+  const apiUrl = `${apiEndpoint}?date_from=${dateFrom}&date_to=${dateTo}&per_page=100`;
+
+  // EDITED: Prevent overlapping requests while the current gallery is loading.
+  getImagesBtn.disabled = true;
 
   gallery.innerHTML = `
     <div class="placeholder">
@@ -51,21 +66,39 @@ getImagesBtn.addEventListener("click", async function () {
   `;
 
   try {
-    const response = await fetch(apiUrl);
-    const data = await response.json();
+    // EDITED: Fetch every result page so ranges longer than 100 entries are complete.
+    const data = [];
+    let page = 1;
+    let totalPages = 1;
 
-    console.log(data);
+    do {
+      // EDITED: Request only gallery fields to avoid downloading full HTML documents.
+      const response = await fetch(`${apiUrl}&page=${page}&_fields=date,title,hdurl,alt,explanation,media_type`);
+      if (!response.ok) {
+        throw new Error(`NASA request failed (HTTP ${response.status}). Please try again.`);
+      }
+
+      const pageData = await response.json();
+      // EDITED: Check the response before using array methods on it.
+      if (!Array.isArray(pageData)) {
+        throw new Error("NASA returned an unexpected response. Please try again.");
+      }
+
+      data.push(...pageData);
+      totalPages = Number(response.headers.get("X-WP-TotalPages")) || 1;
+      page++;
+    } while (page <= totalPages);
+
     displayGallery(data);
 
   } catch (error) {
     console.error("Something went wrong:", error);
 
-    gallery.innerHTML = `
-      <div class="placeholder">
-        <div class="placeholder-icon">❌</div>
-        <p>Unable to load space photos. Please try again.</p>
-      </div>
-    `;
+    // EDITED: Show the failure reason as plain text instead of hiding every error.
+    gallery.textContent = `Unable to load space photos. ${error.message}`;
+  } finally {
+    // EDITED: Re-enable the button after either a successful or failed request.
+    getImagesBtn.disabled = false;
   }
 });
 
@@ -75,13 +108,22 @@ function displayGallery(data) {
 
   gallery.innerHTML = "";
 
-  data.forEach(function (item) {
+  // EDITED: Display photo entries with an image URL; video entries are not photos.
+  const photos = data.filter(item => item.media_type === "image" && item.hdurl);
+  if (photos.length === 0) {
+    gallery.textContent = "No space photos were found for these dates. Try another range.";
+    return;
+  }
+
+  photos.forEach(function (item) {
     const card = document.createElement("div");
     card.className = "gallery-item";
 
     const image = document.createElement("img");
-    image.src = item.url;
-    image.alt = item.title;
+    // EDITED: url now points to a webpage; hdurl contains the actual image.
+    image.src = item.hdurl;
+    image.alt = item.alt || item.title;
+    image.loading = "lazy";
 
     const title = document.createElement("p");
     title.textContent = item.title;
@@ -104,11 +146,14 @@ function displayGallery(data) {
 
 
 function openModal(item) {
-  modalImage.src = item.hdurl || item.url;
-  modalImage.alt = item.title;
+  // EDITED: Use the image URL and descriptive alt text in the modal as well.
+  modalImage.src = item.hdurl;
+  modalImage.alt = item.alt || item.title;
   modalTitle.textContent = item.title;
   modalDate.textContent = item.date;
-  modalExplanation.textContent = item.explanation;
+  // EDITED: Convert the API's HTML explanation to plain text without inserting HTML into the page.
+  const explanation = new DOMParser().parseFromString(item.explanation || "", "text/html");
+  modalExplanation.textContent = explanation.body.textContent;
 
   modal.classList.add("open");
 }
